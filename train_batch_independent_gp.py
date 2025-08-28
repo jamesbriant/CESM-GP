@@ -6,6 +6,7 @@ from matplotlib import pyplot as plt
 
 from argparser import get_base_parser
 from dataset import NetCDFDataset
+from samplers import LatinHypercubeSampler
 
 
 def main(data_path: str, num_iterations: int, learning_rate: float, output_dir: str):
@@ -22,6 +23,13 @@ def main(data_path: str, num_iterations: int, learning_rate: float, output_dir: 
     )
 
     ### Write sampler code here!
+    n_samples = 100 # example value
+    sampler = LatinHypercubeSampler(ds, n_samples)
+    # The user should use the sampler to generate train_x and train_y
+    # For example:
+    # sampled_indices = list(sampler)
+    # train_x, train_y = ds.get_samples(sampled_indices)
+
 
     class BatchIndependentMultitaskGPModel(gpytorch.models.ExactGP):
         def __init__(self, train_x, train_y, likelihood):
