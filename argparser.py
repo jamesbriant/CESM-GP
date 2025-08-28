@@ -13,8 +13,14 @@ def get_base_parser():
         "--target_var",
         type=str,
         choices=["temp", "qv"],
-        default="temp",
+        required=True,
         help="Name of the variable to be used as the target.",
+    )
+    parser.add_argument(
+        "--sample_size",
+        type=int,
+        required=True,
+        help="Number of samples to draw from the dataset. The format of this argument depends on the requirements of the chosen sampler.",
     )
     parser.add_argument(
         "--training_iterations",
@@ -25,7 +31,7 @@ def get_base_parser():
     parser.add_argument(
         "--learning_rate",
         type=float,
-        default=0.01,
+        default=0.1,
         help="Learning rate for the optimizer.",
     )
     # parser.add_argument(

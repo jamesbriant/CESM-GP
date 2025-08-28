@@ -1,5 +1,3 @@
-from typing import Any
-
 import gpytorch
 import torch
 from torch.utils.data import DataLoader
@@ -13,7 +11,7 @@ from utils import trace_and_save_model
 def main(
     data_path: str,
     target_var: str,
-    sample_size: Any,
+    sample_size: int,
     training_iterations: int,
     learning_rate: float,
     output_dir: str,
@@ -23,7 +21,7 @@ def main(
     Args:
         data_path (str): Path to the directory containing the NetCDF files.
         target_var (str): Name of the variable to be used as the target.
-        sample_size (Any): Number of samples to draw from the dataset. The format of this argument depends on the requirements of the chosen sampler.
+        sample_size (int): Number of samples to draw from the dataset. The format of this argument depends on the requirements of the chosen sampler.
         training_iterations (int): Number of training iterations.
         learning_rate (float): Learning rate for the optimizer.
         output_dir (str): Directory to save outputs and models.
@@ -41,11 +39,13 @@ def main(
     print(f"Fitting the bottom {num_pfull} atmospheric levels.")
 
     ### Write sampler code here!
-    n_samples = 100  # example value
-    sampler = LatinHypercubeSampler(ds, n_samples)
+    sampler = LatinHypercubeSampler(ds, sample_size)
 
-    dl = DataLoader(ds, batch_size=n_samples, shuffle=False, sampler=sampler)
+    dl = DataLoader(ds, batch_size=sample_size, shuffle=False, sampler=sampler)
     train_x, train_y = next(iter(dl))  # ONLY CALL THIS ONCE TO GET A SINGLE BATCH
+
+    print(f"train_x shape: {train_x.shape}")
+    print(f"train_y shape: {train_y.shape}")
 
     class BatchIndependentMultitaskGPModel(gpytorch.models.ExactGP):
         def __init__(self, train_x, train_y, likelihood):
@@ -70,6 +70,7 @@ def main(
 
     # --- Use the GPU if available ---
     if torch.cuda.is_available():
+        print("Using CUDA")
         train_x = train_x.cuda()
         train_y = train_y.cuda()
         model = model.cuda()
@@ -80,6 +81,7 @@ def main(
     likelihood.train()
 
     # Use the adam optimizer
+    print("Buliding the optimizer...")
     optimizer = torch.optim.Adam(
         model.parameters(), lr=learning_rate
     )  # Includes GaussianLikelihood parameters
@@ -87,6 +89,7 @@ def main(
     # "Loss" for GPs - the marginal log likelihood
     mll = gpytorch.mlls.ExactMarginalLogLikelihood(likelihood, model)
 
+    print("Training the model...")
     for i in range(training_iterations):
         optimizer.zero_grad()
         output = model(train_x)
@@ -94,6 +97,8 @@ def main(
         loss.backward()
         print("Iter %d/%d - Loss: %.3f" % (i + 1, training_iterations, loss.item()))
         optimizer.step()
+
+    print("Finished training!")
 
     # Set into eval mode
     model.eval()
@@ -155,6 +160,7 @@ def main(
     # plt.savefig("figures/independent_multitask_gp.png")
 
     # --- Trace the model with TorchScript ---
+    print("Tracing and saving the model...")
     trace_and_save_model(
         model,
         test_x,
