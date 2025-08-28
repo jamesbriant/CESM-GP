@@ -57,6 +57,7 @@ class NetCDFDataset(Dataset):
         self.num_times = len(self.ds.time)
         self.num_lats = len(self.ds.lat)
         self.num_lons = len(self.ds.lon)
+        self.num_pfull = len(self.ds.pfull)
 
         # Pre-calculate the size of a 2D lat-lon slice and 3D time-lat-lon slice for efficiency
         self.lat_lon_size = self.num_lats * self.num_lons
@@ -117,7 +118,6 @@ class NetCDFDataset(Dataset):
         """
         Retrieves a single data point from the dataset.
         """
-
         # --- Convert 1D index to 3D (time, lat, lon) indices ---
         time_idx, lat_idx, lon_idx = self.idx_to_indices(idx)
 

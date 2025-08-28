@@ -9,15 +9,15 @@ def get_base_parser():
         required=True,
         help="Path to the directory containing the NetCDF files.",
     )
-    # parser.add_argument(
-    #     "--model-type",
-    #     type=str,
-    #     choices=["independent", "shared", "multioutput"],
-    #     default="independent",
-    #     help="Type of GP model to use.",
-    # )
     parser.add_argument(
-        "--num_iterations",
+        "--target_var",
+        type=str,
+        choices=["temp", "qv"],
+        default="temp",
+        help="Name of the variable to be used as the target.",
+    )
+    parser.add_argument(
+        "--training_iterations",
         type=int,
         default=50,
         help="Number of training iterations.",
@@ -39,5 +39,11 @@ def get_base_parser():
         type=str,
         default="./output",
         help="Directory to save outputs and models.",
+    )
+    parser.add_argument(
+        "--min_pfull",
+        type=float,
+        default=0.0,
+        help="Minimum pfull value to filter the data.",
     )
     return parser

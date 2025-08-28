@@ -1,8 +1,7 @@
 import unittest
-import torch
-import numpy as np
 
-from samplers import RandomSampler, LatinHypercubeSampler, StratifiedSampler
+from samplers import LatinHypercubeSampler, RandomSampler, StratifiedSampler
+
 
 class MockDataset:
     def __init__(self, num_times, num_lats, num_lons):
@@ -18,8 +17,8 @@ class MockDataset:
     def indices_to_idx(self, time_idx, lat_idx, lon_idx):
         return (time_idx * self.lat_lon_size) + (lat_idx * self.num_lons) + lon_idx
 
-class TestSamplers(unittest.TestCase):
 
+class TestSamplers(unittest.TestCase):
     def setUp(self):
         self.dataset = MockDataset(num_times=10, num_lats=20, num_lons=30)
         self.n_samples = 50
@@ -28,7 +27,7 @@ class TestSamplers(unittest.TestCase):
         sampler = RandomSampler(self.dataset, self.n_samples)
         samples = list(sampler)
         self.assertEqual(len(samples), self.n_samples)
-        self.assertEqual(len(set(samples)), self.n_samples) # Check for uniqueness
+        self.assertEqual(len(set(samples)), self.n_samples)  # Check for uniqueness
         for sample in samples:
             self.assertGreaterEqual(sample, 0)
             self.assertLess(sample, len(self.dataset))
@@ -42,22 +41,29 @@ class TestSamplers(unittest.TestCase):
             self.assertLess(sample, len(self.dataset))
 
     def test_stratified_sampler_lon(self):
-        sampler = StratifiedSampler(self.dataset, self.n_samples, strata=['lon'])
+        sampler = StratifiedSampler(self.dataset, self.n_samples, strata=["lon"])
         samples = list(sampler)
         # n_samples might not be perfectly divisible, so we check the length is close
-        self.assertAlmostEqual(len(samples), self.n_samples, delta=self.dataset.num_lons)
+        self.assertAlmostEqual(
+            len(samples), self.n_samples, delta=self.dataset.num_lons
+        )
         for sample in samples:
             self.assertGreaterEqual(sample, 0)
             self.assertLess(sample, len(self.dataset))
 
     def test_stratified_sampler_time_lat(self):
         n_samples = 100
-        sampler = StratifiedSampler(self.dataset, n_samples, strata=['time', 'lat'])
+        sampler = StratifiedSampler(self.dataset, n_samples, strata=["time", "lat"])
         samples = list(sampler)
-        self.assertAlmostEqual(len(samples), n_samples, delta=self.dataset.num_times * self.dataset.num_lats)
+        self.assertAlmostEqual(
+            len(samples),
+            n_samples,
+            delta=self.dataset.num_times * self.dataset.num_lats,
+        )
         for sample in samples:
             self.assertGreaterEqual(sample, 0)
             self.assertLess(sample, len(self.dataset))
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     unittest.main()
