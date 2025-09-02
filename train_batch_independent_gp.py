@@ -30,18 +30,23 @@ def main(
 
     ds = NetCDFDataset(
         data_path=data_path,
-        feature_vars=["temp", "qv"],
+        # feature_vars=["temp", "qv"],
+        feature_vars=["temp"],
         target_var=target_var,
         min_pfull=min_pfull,
+        sample_size=sample_size,
     )
 
     num_pfull = ds.num_pfull
     print(f"Fitting the bottom {num_pfull} atmospheric levels.")
 
     ### Write sampler code here!
+    print("Generating the sampler...")
     sampler = LatinHypercubeSampler(ds, sample_size)
 
-    dl = DataLoader(ds, batch_size=sample_size, shuffle=False, sampler=sampler)
+    print("Generating the DataLoader...")
+    dl = DataLoader(ds, batch_size=sample_size, sampler=sampler)
+    print("Generating batch...")
     train_x, train_y = next(iter(dl))  # ONLY CALL THIS ONCE TO GET A SINGLE BATCH
 
     print(f"train_x shape: {train_x.shape}")
@@ -104,60 +109,9 @@ def main(
     model.eval()
     likelihood.eval()
 
-    # # Initialize plots
-    # f, (y1_ax, y2_ax) = plt.subplots(1, 2, figsize=(8, 3))
-
-    test_x = torch.linspace(0, 1, 51)
+    test_x = torch.linspace(0, 1, 200).squeeze(-1)
     if torch.cuda.is_available():
         test_x = test_x.cuda()
-
-    # # Make predictions
-    # with torch.no_grad(), gpytorch.settings.fast_pred_var():
-    #     predictions = likelihood(model(test_x))
-    #     mean = predictions.mean
-    #     lower, upper = predictions.confidence_region()
-
-    # if torch.cuda.is_available():
-    #     mean = mean.cpu()
-    #     lower = lower.cpu()
-    #     upper = upper.cpu()
-
-    #     train_x = train_x.cpu()
-    #     train_y = train_y.cpu()
-    #     test_x = test_x.cpu()
-
-    # # This contains predictions for both tasks, flattened out
-    # # The first half of the predictions is for the first task
-    # # The second half is for the second task
-
-    # # Plot training data as black stars
-    # y1_ax.plot(train_x.detach().numpy(), train_y[:, 0].detach().numpy(), "k*")
-    # # Predictive mean as blue line
-    # y1_ax.plot(test_x.numpy(), mean[:, 0].numpy(), "b")
-    # # Shade in confidence
-    # y1_ax.fill_between(
-    #     test_x.numpy(), lower[:, 0].numpy(), upper[:, 0].numpy(), alpha=0.5
-    # )
-    # y1_ax.set_ylim([-3, 3])
-    # y1_ax.legend(["Observed Data", "Mean", "Confidence"])
-    # y1_ax.set_title("Observed Values (Likelihood)")
-
-    # # Plot training data as black stars
-    # y2_ax.plot(train_x.detach().numpy(), train_y[:, 1].detach().numpy(), "k*")
-    # # Predictive mean as blue line
-    # y2_ax.plot(test_x.numpy(), mean[:, 1].numpy(), "b")
-    # # Shade in confidence
-    # y2_ax.fill_between(
-    #     test_x.numpy(), lower[:, 1].numpy(), upper[:, 1].numpy(), alpha=0.5
-    # )
-    # y2_ax.set_ylim([-3, 3])
-    # y2_ax.legend(["Observed Data", "Mean", "Confidence"])
-    # y2_ax.set_title("Observed Values (Likelihood)")
-
-    # # plt.show()
-    # if not os.path.exists("figures"):
-    #     os.makedirs("figures")
-    # plt.savefig("figures/independent_multitask_gp.png")
 
     # --- Trace the model with TorchScript ---
     print("Tracing and saving the model...")
