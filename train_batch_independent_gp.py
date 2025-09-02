@@ -5,7 +5,7 @@ from torch.utils.data import DataLoader
 from argparser import get_base_parser
 from dataset import NetCDFDataset
 from samplers import LatinHypercubeSampler
-from utils import trace_and_save_model
+from tracer import trace_and_save_model
 
 
 def main(
@@ -31,7 +31,7 @@ def main(
     ds = NetCDFDataset(
         data_path=data_path,
         # feature_vars=["temp", "qv"],
-        feature_vars=["temp"],
+        feature_vars=["qv"],
         target_var=target_var,
         min_pfull=min_pfull,
         sample_size=sample_size,
@@ -109,7 +109,12 @@ def main(
     model.eval()
     likelihood.eval()
 
-    test_x = torch.linspace(0, 1, 200).squeeze(-1)
+    # --- Design the test points ---
+    # test_x_temp = torch.linspace(0, 1, 200)
+    # test_x_qv = torch.linspace(0, 1, 200)
+    # # test_x = torch.stack([test_x_temp, test_x_qv], -1)
+    # test_x = torch.stack([test_x_qv, test_x_qv, test_x_qv], -1)
+    test_x = train_x  # Save the GP at the same locations as the training data.
     if torch.cuda.is_available():
         test_x = test_x.cuda()
 
@@ -119,7 +124,7 @@ def main(
         model,
         test_x,
         output_dir,
-        "independent_multitask_gp_model.pt",
+        "independent_multitask.pt",
     )
 
 

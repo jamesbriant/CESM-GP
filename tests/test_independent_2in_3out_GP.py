@@ -4,7 +4,7 @@ import gpytorch
 import torch
 from matplotlib import pyplot as plt
 
-from utils import trace_and_save_model
+from tracer import trace_and_save_model
 
 train_x0 = torch.linspace(0, 1, 100)
 train_x1 = torch.linspace(0.4, 0.8, 100)

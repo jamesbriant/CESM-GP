@@ -3,7 +3,7 @@ import math
 import gpytorch
 import torch
 
-from utils import trace_and_save_model
+from tracer import trace_and_save_model
 
 train_x = torch.linspace(0, 1, 100)
 
@@ -64,7 +64,12 @@ for i in range(training_iterations):
 # --- Add this line after your training loop ---
 torch.save(model.state_dict(), "multitask_gp_state.pth")
 
-test_x = torch.linspace(0, 1, 200).unsqueeze(-1)
+# test_x = torch.linspace(0, 1, 200).unsqueeze(-1)
+test_x = train_x.unsqueeze(
+    -1
+)  # Save the GP at the same locations as the training data.
+# WHAT ARE THE IMPLICATIONS OF THIS?
+# HOW DOES THIS AFFECT THE TRACED MODEL'S UNCERTAINTY ESTIMATES???
 print("Tracing and saving the model...")
 trace_and_save_model(
     model,
