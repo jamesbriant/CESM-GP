@@ -43,7 +43,7 @@ def get_base_parser():
     parser.add_argument(
         "--output_dir",
         type=str,
-        default="./output",
+        default="./models",
         help="Directory to save outputs and models.",
     )
     parser.add_argument(
