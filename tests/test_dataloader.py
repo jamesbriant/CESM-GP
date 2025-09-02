@@ -15,19 +15,20 @@ def main(
         data_path (str): Path to the directory containing the NetCDF files.
         min_pfull (float): Minimum pfull value to filter the data.
     """
+    n_samples = 100  # example value
 
     ds = NetCDFDataset(
         data_path=data_path,
         feature_vars=["temp", "qv"],
         target_var="temp",
         min_pfull=min_pfull,
+        sample_size=n_samples,
     )
 
     num_pfull = ds.num_pfull
     print(f"Fitting the bottom {num_pfull} atmospheric levels.")
 
     # --- Build the sampler ---
-    n_samples = 100  # example value
     # sampler = LatinHypercubeSampler(ds, n_samples)
     sampler = RandomSampler(ds, n_samples)
 

@@ -18,6 +18,7 @@ class NetCDFDataset(Dataset):
         feature_vars: List[str],
         target_var,
         min_pfull: float = 0,
+        sample_size: int = 0,
     ):
         """
         Args:
@@ -25,6 +26,7 @@ class NetCDFDataset(Dataset):
             feature_vars (list of str): Names of the variables to be used as features.
             target_var (str): Name of the variable to be used as the target.
             min_pfull (float): Minimum pfull value to filter the data.
+            sample_size (int): Number of samples to draw from the used purely for progress bar, optional.
         """
         assert target_var in ["temp", "qv"], "target_var must be either 'temp' or 'qv'."
         assert min_pfull >= 0, "min_pfull must be non-negative."
@@ -62,6 +64,9 @@ class NetCDFDataset(Dataset):
         # Pre-calculate the size of a 2D lat-lon slice and 3D time-lat-lon slice for efficiency
         self.lat_lon_size = self.num_lats * self.num_lons
         self.length = self.num_times * self.lat_lon_size
+
+        self.sample_size = sample_size
+        self.samples_drawn = 0
 
     def idx_to_indices(self, idx: int) -> tuple[int, int, int]:
         """
@@ -127,14 +132,23 @@ class NetCDFDataset(Dataset):
         # This slice will contain all `pfull` values.
         sample_point = self.ds.isel(time=time_idx, lat=lat_idx, lon=lon_idx)
 
-        # `train_x` is the humidity data along the `pfull` dimension
-        inputs = sample_point[self.feature_vars].to_array(dim="features")
-        train_x = torch.from_numpy(inputs.values.T).float()
+        # `train_x` is the `self.feature_vars` stacked data along the `pfull` dimension
+        stacked_inputs = sample_point[self.feature_vars].to_stacked_array(
+            "features", sample_dims=[]
+        )
+        train_x = torch.from_numpy(stacked_inputs.values).float()
 
-        # `train_y` is the temperature data along the `pfull` dimension
+        # `train_y` is the `self.target_var` data along the `pfull` dimension
         targets = sample_point[f"{self.target_var}_std"]
         train_y = torch.from_numpy(targets.values).float()
 
-        # train_x will have shape [num_features, N_pfull]
+        self.samples_drawn += 1
+        if self.sample_size > 0:
+            print(
+                f"{100 * self.samples_drawn / self.sample_size:.2f}% - {self.samples_drawn}/{self.sample_size} samples loaded.",
+                end="\r",
+            )
+
+        # train_x will have shape [N_pfull*num_features]
         # train_y will have shape [N_pfull]
         return train_x, train_y
