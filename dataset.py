@@ -68,6 +68,9 @@ class NetCDFDataset(Dataset):
         self.sample_size = sample_size
         self.samples_drawn = 0
 
+        # Store sampled indices
+        self.sampled_idxes = []
+
     def idx_to_indices(self, idx: int) -> tuple[int, int, int]:
         """
         Converts a single flat index into 3D (time, lat, lon) indices.
@@ -148,6 +151,8 @@ class NetCDFDataset(Dataset):
                 f"{100 * self.samples_drawn / self.sample_size:.2f}% - {self.samples_drawn}/{self.sample_size} samples loaded.",
                 end="\r",
             )
+
+        self.sampled_idxes.append(idx)
 
         # train_x will have shape [N_pfull*num_features]
         # train_y will have shape [N_pfull]

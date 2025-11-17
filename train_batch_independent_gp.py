@@ -1,3 +1,6 @@
+import os
+from pathlib import Path
+
 import gpytorch
 import torch
 from torch.utils.data import DataLoader
@@ -30,8 +33,7 @@ def main(
 
     ds = NetCDFDataset(
         data_path=data_path,
-        # feature_vars=["temp", "qv"],
-        feature_vars=["qv"],
+        feature_vars=["temp", "qv"],
         target_var=target_var,
         min_pfull=min_pfull,
         sample_size=sample_size,
@@ -110,22 +112,31 @@ def main(
     likelihood.eval()
 
     # --- Design the test points ---
-    # test_x_temp = torch.linspace(0, 1, 200)
-    # test_x_qv = torch.linspace(0, 1, 200)
-    # # test_x = torch.stack([test_x_temp, test_x_qv], -1)
-    # test_x = torch.stack([test_x_qv, test_x_qv, test_x_qv], -1)
-    test_x = train_x  # Save the GP at the same locations as the training data.
+    # Save the GP at the same locations as the training data.
+    # There is perhaps an opportunity to save memory here.
     if torch.cuda.is_available():
-        test_x = test_x.cuda()
+        train_x = train_x.cuda()
 
     # --- Trace the model with TorchScript ---
     print("Tracing and saving the model...")
     trace_and_save_model(
         model,
-        test_x,
+        train_x,
         output_dir,
-        "independent_multitask.pt",
+        f"independent_multitask_{target_var}_{min_pfull}.pt",
     )
+
+    # Save sampled indices to a text file
+    output_dir = Path(output_dir)
+    indices_dir = output_dir / "training_indices"
+    os.makedirs(indices_dir, exist_ok=True)
+    sampled_indices_path = (
+        indices_dir / f"independent_multitask_{target_var}_{min_pfull}.txt"
+    )
+    with open(sampled_indices_path, "w") as f:
+        for idx in ds.sampled_idxes:
+            f.write(f"{idx}\n")
+    print(f"Training indices saved to {indices_dir}/{sampled_indices_path}")
 
 
 if __name__ == "__main__":
