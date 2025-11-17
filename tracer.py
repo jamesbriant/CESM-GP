@@ -1,71 +1,66 @@
 import math
 import os
+import json
 from typing import Any, Callable
 
 import gpytorch
 import torch
+from torch.distributions import AffineTransform, TransformedDistribution, MultivariateNormal
 
 
 def trace_model(
     model: gpytorch.models.ExactGP,
     test_x: torch.Tensor,
+    output_scale: float = 1.0,
+    output_loc: float = 0.0,
 ):
     """
-    Traces a trained GPyTorch ExactGP model for saving and deployment.
-
+    Traces a trained GPyTorch ExactGP model, embedding an affine output transform.
     Args:
         model (gpytorch.models.ExactGP): The trained GPyTorch model.
-        test_x (torch.Tensor): A sample input tensor to use for tracing.
-                               The shape and dtype must be representative
-                               of the inputs the final model will receive.
+        test_x (torch.Tensor): A sample input tensor for tracing.
+        output_scale (float): The scaling factor for the output transformation.
+        output_loc (float): The location/shift for the output transformation.
     """
-    # It's crucial to set the model to evaluation mode
     model.eval()
 
-    # This wrapper creates a stateless prediction module.
-    # It extracts the trained parameters and rebuilds the prediction logic
-    # using simple tensor operations, making it JIT-traceable.
     class PredictionWrapper(torch.nn.Module):
-        def __init__(self, trained_model: gpytorch.models.ExactGP):
+        def __init__(
+            self,
+            trained_model: gpytorch.models.ExactGP,
+            output_scale: float,
+            output_loc: float,
+        ):
             super().__init__()
-            # --- Enforce 2D Input Convention ---
             train_x_input = trained_model.train_inputs[0]
             if train_x_input.dim() != 2:
                 raise ValueError(
-                    f"train_x must be a 2D tensor (n_data, n_features). "
-                    f"Got {train_x_input.dim()} dimensions."
+                    f"train_x must be a 2D tensor. Got {train_x_input.dim()} dims."
                 )
 
-            # Extract the raw trained parameters (hyperparameters) from the model
-            # and store them as buffers.
             self.register_buffer("train_x", train_x_input)
             self.register_buffer("train_y", trained_model.train_targets)
+            self.register_buffer("output_scale", torch.tensor(output_scale))
+            self.register_buffer("output_loc", torch.tensor(output_loc))
 
-            # --- Kernel Detection and Hyperparameter Extraction ---
             base_kernel = trained_model.covar_module.base_kernel
             self.kernel_type = type(base_kernel).__name__
 
             if self.kernel_type == "RBFKernel":
-                lengthscale = base_kernel.lengthscale.data
-                self.register_buffer("lengthscale", lengthscale)
+                self.register_buffer("lengthscale", base_kernel.lengthscale.data)
             elif self.kernel_type == "MaternKernel":
-                lengthscale = base_kernel.lengthscale.data
-                nu = base_kernel.nu
-                self.register_buffer("lengthscale", lengthscale)
-                self.nu = nu  # Store nu as a simple attribute
+                self.register_buffer("lengthscale", base_kernel.lengthscale.data)
+                self.nu = base_kernel.nu
             else:
-                raise NotImplementedError(
-                    f"Kernel type {self.kernel_type} is not supported for tracing."
-                )
+                raise NotImplementedError(f"Unsupported kernel: {self.kernel_type}")
 
-            # Extract mean, noise, and outputscale (common to all kernels)
-            mean_constant = trained_model.mean_module.constant.data
-            noise = trained_model.likelihood.noise.data
-            outputscale = trained_model.covar_module.outputscale.data
-
-            self.register_buffer("mean_constant", mean_constant)
-            self.register_buffer("noise", noise)
-            self.register_buffer("outputscale", outputscale)
+            self.register_buffer(
+                "mean_constant", trained_model.mean_module.constant.data
+            )
+            self.register_buffer("noise", trained_model.likelihood.noise.data)
+            self.register_buffer(
+                "outputscale", trained_model.covar_module.outputscale.data
+            )
 
             # Pre-compute and cache the alpha term, which is central to GP prediction.
             with torch.no_grad():
@@ -181,23 +176,23 @@ def trace_model(
                 )
 
                 # Return results with consistent batch dimensions
-                # pred_mean -> (n_test, num_tasks)
-                # pred_covar -> (n_test, n_test, num_tasks)
-                return pred_mean.transpose(0, 1), pred_covar.permute(1, 2, 0)
+                # --- Apply Affine Transformation ---
+                # E[a*X + b] = a*E[X] + b
+                # Cov[a*X + b] = a^2 * Cov[X]
+                final_mean = self.output_scale * pred_mean + self.output_loc
+                final_covar = (self.output_scale**2) * pred_covar
 
-    # The gpytorch.settings.trace_mode() is essential. It tells GPyTorch
-    # to use operations that are friendly to the JIT tracer.
+                # Return results with consistent batch dimensions
+                return final_mean.transpose(0, 1), final_covar.permute(1, 2, 0)
+
     with torch.no_grad(), gpytorch.settings.trace_mode(True):
-        traced_model = torch.jit.trace(PredictionWrapper(model), test_x)
-
+        traced_model = torch.jit.trace(
+            PredictionWrapper(model, output_scale, output_loc), test_x
+        )
     return traced_model
 
 
-def save_traced_model(
-    traced_model: Any,
-    output_dir: str,
-    name: str,
-):
+def save_traced_model(traced_model: Any, output_dir: str, name: str):
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
     traced_model.save(os.path.join(output_dir, name))
@@ -209,45 +204,76 @@ def trace_and_save_model(
     test_x: torch.Tensor,
     output_dir: str,
     name: str,
+    output_scale: float = 1.0,
+    output_loc: float = 0.0,
 ):
-    traced_model = trace_model(model, test_x)
+    traced_model = trace_model(model, test_x, output_scale, output_loc)
     save_traced_model(traced_model, output_dir, name)
 
 
-# Write a class to handle the loading and forward pass of a saved traced model.
-# This makes it easier to handle input and output scaling.
 class TracedGPModelHandler:
-    def __init__(
-        self,
-        model_path: str,
-        device: torch.device,
-        input_transform: Callable[[float], float] = lambda x: x,
-        output_mean_transform: Callable[[float], float] = lambda x: x,
-        output_covar_transform: Callable[[float], float] = lambda x: x,
-    ):
+    def __init__(self, model_path: str, device: torch.device):
         """
-        Loads a traced GP model and prepares it for inference.
+        Loads a traced GP model and its metadata to prepare for inference.
         Args:
-            model_path (str): Path to the saved traced model.
+            model_path (str): Path to the saved traced model (e.g., 'model.pt').
             device (torch.device): Device to load the model onto.
-            input_transform (Callable[[float], float]): Function to transform test points into model inputs.
-            output_mean_transform (Callable[[float], float]): Function to transform model mean outputs.
-            output_covar_transform (Callable[[float], float]): Function to transform model covariance outputs.
         """
-        self.input_transform = input_transform
-        self.output_mean_transform = output_mean_transform
-        self.output_covar_transform = output_covar_transform
         self.device = device
         self.model = torch.jit.load(model_path, map_location=device)
         self.model.eval()
 
-    def predict(self, test_x: torch.Tensor):
-        test_x = self.input_transform(test_x)
-        test_x = test_x.to(self.device)
-        with torch.no_grad():
-            pred_mean, pred_covar = self.model(test_x)
+        # --- Load Metadata to Infer Inverse Transform ---
+        meta_path = model_path.replace(".pt", ".json")
+        if not os.path.exists(meta_path):
+            print(
+                f"Warning: Metadata file not found at {meta_path}. "
+                "Assuming identity transform."
+            )
+            self.metadata = {}
+        else:
+            with open(meta_path, "r") as f:
+                self.metadata = json.load(f)
 
-        return (
-            self.output_mean_transform(pred_mean),
-            self.output_covar_transform(pred_covar),
+        self.inverse_output_transform = self._get_inverse_transform()
+
+    def _get_inverse_transform(self):
+        """Builds the inverse transformation from metadata."""
+        config = self.metadata.get("transformations", {}).get("output")
+        if not config or config["type"] == "identity":
+            # Return the inverse of an identity transform, which is just identity
+            return AffineTransform(loc=0.0, scale=1.0).inv
+        if config["type"] == "affine":
+            # Create the forward transform and return its inverse
+            forward_transform = AffineTransform(
+                loc=config["loc"], scale=config["scale"]
+            )
+            return forward_transform.inv
+        raise NotImplementedError(f"Unsupported transform: {config['type']}")
+
+    def predict(self, test_x: torch.Tensor, return_original_scale: bool = True):
+        """
+        Makes predictions and optionally transforms them back to the original scale.
+        Args:
+            test_x (torch.Tensor): Input tensor for prediction.
+            return_original_scale (bool): If True, transforms the prediction back
+                                           to the original data scale.
+        Returns:
+            torch.distributions.TransformedDistribution: The predictive distribution.
+        """
+        test_x = test_x.to(self.device)
+
+        with torch.no_grad():
+            pred_mean_transformed, pred_covar_transformed = self.model(test_x)
+
+        base_distribution = MultivariateNormal(
+            loc=pred_mean_transformed.transpose(0, 1),
+            covariance_matrix=pred_covar_transformed.permute(2, 0, 1),
         )
+
+        if return_original_scale:
+            return TransformedDistribution(base_distribution, self.inverse_output_transform)
+        else:
+            return TransformedDistribution(
+                base_distribution, AffineTransform(loc=0.0, scale=1.0)
+            )

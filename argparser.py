@@ -52,4 +52,21 @@ def get_base_parser():
         default=0.0,
         help="Minimum pfull value to filter the data.",
     )
+    # --- Transformation Arguments ---
+    parser.add_argument(
+        "--target-scale",
+        type=float,
+        default=1.0,
+        help="Factor to scale the target variable by.",
+    )
+    parser.add_argument(
+        "--target-loc",
+        type=float,
+        default=0.0,
+        help="Value to shift the target variable by (after scaling).",
+    )
+    # --- Reproducibility ---
+    parser.add_argument(
+        "--seed", type=int, default=None, help="Random seed for reproducibility."
+    )
     return parser

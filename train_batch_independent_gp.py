@@ -1,14 +1,16 @@
 import os
-from pathlib import Path
-
-import gpytorch
+import json
 import torch
+import gpytorch
+from pathlib import Path
+from datetime import datetime
 from torch.utils.data import DataLoader
+from torch.distributions import AffineTransform
 
-from argparser import get_base_parser
-from dataset import NetCDFDataset
-from samplers import LatinHypercubeSampler
 from tracer import trace_and_save_model
+from samplers import LatinHypercubeSampler
+from dataset import NetCDFDataset
+from argparser import get_base_parser
 
 
 def main(
@@ -19,17 +21,15 @@ def main(
     learning_rate: float,
     output_dir: str,
     min_pfull: float = 0,
+    target_scale: float = 1.0,
+    target_loc: float = 0.0,
+    seed: int = None,
 ):
-    """Train a batch independent multitask Gaussian Process model on synthetic data.
-    Args:
-        data_path (str): Path to the directory containing the NetCDF files.
-        target_var (str): Name of the variable to be used as the target.
-        sample_size (int): Number of samples to draw from the dataset. The format of this argument depends on the requirements of the chosen sampler.
-        training_iterations (int): Number of training iterations.
-        learning_rate (float): Learning rate for the optimizer.
-        output_dir (str): Directory to save outputs and models.
-        min_pfull (float): Minimum pfull value to filter the data.
-    """
+    """Train a batch independent multitask Gaussian Process model on synthetic data."""
+    # --- Reproducibility ---
+    if seed is not None:
+        torch.manual_seed(seed)
+        print(f"Random seed set to {seed}")
 
     ds = NetCDFDataset(
         data_path=data_path,
@@ -42,14 +42,17 @@ def main(
     num_pfull = ds.num_pfull
     print(f"Fitting the bottom {num_pfull} atmospheric levels.")
 
-    ### Write sampler code here!
     print("Generating the sampler...")
     sampler = LatinHypercubeSampler(ds, sample_size)
 
     print("Generating the DataLoader...")
     dl = DataLoader(ds, batch_size=sample_size, sampler=sampler)
     print("Generating batch...")
-    train_x, train_y = next(iter(dl))  # ONLY CALL THIS ONCE TO GET A SINGLE BATCH
+    train_x, train_y = next(iter(dl))
+
+    # --- Apply Transformations ---
+    output_transform = AffineTransform(loc=target_loc, scale=target_scale)
+    train_y = output_transform(train_y)
 
     print(f"train_x shape: {train_x.shape}")
     print(f"train_y shape: {train_y.shape}")
@@ -117,26 +120,48 @@ def main(
     if torch.cuda.is_available():
         train_x = train_x.cuda()
 
-    # --- Trace the model with TorchScript ---
+    # --- Trace and Save ---
+    timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%S")
+    model_name = (
+        f"{timestamp}_{target_var}_pfull{min_pfull}_samples{sample_size}"
+    )
+    meta_path = os.path.join(output_dir, f"{model_name}.json")
+
     print("Tracing and saving the model...")
     trace_and_save_model(
         model,
         train_x,
         output_dir,
-        f"independent_multitask_{target_var}_{min_pfull}.pt",
+        f"{model_name}.pt",
+        output_scale=target_scale,
+        output_loc=target_loc,
     )
 
-    # Save sampled indices to a text file
-    output_dir = Path(output_dir)
-    indices_dir = output_dir / "training_indices"
-    os.makedirs(indices_dir, exist_ok=True)
-    sampled_indices_path = (
-        indices_dir / f"independent_multitask_{target_var}_{min_pfull}.txt"
-    )
-    with open(sampled_indices_path, "w") as f:
-        for idx in ds.sampled_idxes:
-            f.write(f"{idx}\n")
-    print(f"Training indices saved to {indices_dir}/{sampled_indices_path}")
+    # --- Save Metadata for record-keeping ---
+    metadata = {
+        "model_name": model_name,
+        "target_variable": target_var,
+        "timestamp_utc": datetime.utcnow().isoformat(),
+        "training_args": {
+            "sample_size": sample_size,
+            "training_iterations": training_iterations,
+            "learning_rate": learning_rate,
+            "min_pfull": min_pfull,
+            "seed": seed,
+        },
+        "transformations": {
+            "output": {
+                "type": "affine",
+                "scale": target_scale,
+                "loc": target_loc,
+            }
+        },
+        "training_indices": ds.sampled_idxes,
+    }
+
+    with open(meta_path, "w") as f:
+        json.dump(metadata, f, indent=4)
+    print(f"Metadata saved to {meta_path}")
 
 
 if __name__ == "__main__":
