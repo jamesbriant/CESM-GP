@@ -1,6 +1,6 @@
 import math
 import os
-from typing import Any
+from typing import Any, Callable
 
 import gpytorch
 import torch
@@ -212,3 +212,42 @@ def trace_and_save_model(
 ):
     traced_model = trace_model(model, test_x)
     save_traced_model(traced_model, output_dir, name)
+
+
+# Write a class to handle the loading and forward pass of a saved traced model.
+# This makes it easier to handle input and output scaling.
+class TracedGPModelHandler:
+    def __init__(
+        self,
+        model_path: str,
+        device: torch.device,
+        input_transform: Callable[[float], float] = lambda x: x,
+        output_mean_transform: Callable[[float], float] = lambda x: x,
+        output_covar_transform: Callable[[float], float] = lambda x: x,
+    ):
+        """
+        Loads a traced GP model and prepares it for inference.
+        Args:
+            model_path (str): Path to the saved traced model.
+            device (torch.device): Device to load the model onto.
+            input_transform (Callable[[float], float]): Function to transform test points into model inputs.
+            output_mean_transform (Callable[[float], float]): Function to transform model mean outputs.
+            output_covar_transform (Callable[[float], float]): Function to transform model covariance outputs.
+        """
+        self.input_transform = input_transform
+        self.output_mean_transform = output_mean_transform
+        self.output_covar_transform = output_covar_transform
+        self.device = device
+        self.model = torch.jit.load(model_path, map_location=device)
+        self.model.eval()
+
+    def predict(self, test_x: torch.Tensor):
+        test_x = self.input_transform(test_x)
+        test_x = test_x.to(self.device)
+        with torch.no_grad():
+            pred_mean, pred_covar = self.model(test_x)
+
+        return (
+            self.output_mean_transform(pred_mean),
+            self.output_covar_transform(pred_covar),
+        )
