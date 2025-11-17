@@ -1,16 +1,16 @@
-import os
 import json
-import torch
-import gpytorch
-from pathlib import Path
+import os
 from datetime import datetime
-from torch.utils.data import DataLoader
-from torch.distributions import AffineTransform
 
-from tracer import trace_and_save_model
-from samplers import LatinHypercubeSampler
-from dataset import NetCDFDataset
+import gpytorch
+import torch
+from torch.distributions import AffineTransform
+from torch.utils.data import DataLoader
+
 from argparser import get_base_parser
+from dataset import NetCDFDataset
+from samplers import LatinHypercubeSampler
+from tracer import trace_and_save_model
 
 
 def main(
@@ -122,9 +122,7 @@ def main(
 
     # --- Trace and Save ---
     timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%S")
-    model_name = (
-        f"{timestamp}_{target_var}_pfull{min_pfull}_samples{sample_size}"
-    )
+    model_name = f"{timestamp}_{target_var}_pfull{min_pfull}_samples{sample_size}"
     meta_path = os.path.join(output_dir, f"{model_name}.json")
 
     print("Tracing and saving the model...")

@@ -1,11 +1,15 @@
+import json
 import math
 import os
-import json
-from typing import Any, Callable
+from typing import Any
 
 import gpytorch
 import torch
-from torch.distributions import AffineTransform, TransformedDistribution, MultivariateNormal
+from torch.distributions import (
+    AffineTransform,
+    MultivariateNormal,
+    TransformedDistribution,
+)
 
 
 def trace_model(
@@ -272,7 +276,9 @@ class TracedGPModelHandler:
         )
 
         if return_original_scale:
-            return TransformedDistribution(base_distribution, self.inverse_output_transform)
+            return TransformedDistribution(
+                base_distribution, self.inverse_output_transform
+            )
         else:
             return TransformedDistribution(
                 base_distribution, AffineTransform(loc=0.0, scale=1.0)
