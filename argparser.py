@@ -67,6 +67,6 @@ def get_base_parser():
     )
     # --- Reproducibility ---
     parser.add_argument(
-        "--seed", type=int, default=None, help="Random seed for reproducibility."
+        "--seed", type=int, default=2025, help="Random seed for reproducibility."
     )
     return parser

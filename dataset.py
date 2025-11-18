@@ -152,7 +152,7 @@ class NetCDFDataset(Dataset):
                 end="\r",
             )
 
-        self.sampled_idxes.append(idx)
+        self.sampled_idxes.append(int(idx))
 
         # train_x will have shape [N_pfull*num_features]
         # train_y will have shape [N_pfull]

@@ -1,6 +1,6 @@
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 
 import gpytorch
 import torch
@@ -23,7 +23,7 @@ def main(
     min_pfull: float = 0,
     target_scale: float = 1.0,
     target_loc: float = 0.0,
-    seed: int = None,
+    seed: int = 2025,
 ):
     """Train a batch independent multitask Gaussian Process model on synthetic data."""
     # --- Reproducibility ---
@@ -31,6 +31,7 @@ def main(
         torch.manual_seed(seed)
         print(f"Random seed set to {seed}")
 
+    # --- Load Dataset ---
     ds = NetCDFDataset(
         data_path=data_path,
         feature_vars=["temp", "qv"],
@@ -139,7 +140,7 @@ def main(
     metadata = {
         "model_name": model_name,
         "target_variable": target_var,
-        "timestamp_utc": datetime.utcnow().isoformat(),
+        "timestamp_utc": datetime.now(timezone.utc).isoformat(),
         "training_args": {
             "sample_size": sample_size,
             "training_iterations": training_iterations,
